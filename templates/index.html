@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐍 Slytherin - Snake Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🐍 Slytherin</h1>
+            <p class="subtitle">Snake Venomous Classification System</p>
+            {% if accuracy > 0 %}
+            <div class="accuracy-badge">
+                <span>Model Accuracy: {{ "%.1f"|format(accuracy * 100) }}%</span>
+            </div>
+            {% endif %}
+        </header>
+
+        <main class="main-content">
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <div class="upload-icon">📸</div>
+                        <h3>Upload Snake Image</h3>
+                        <p>Drag and drop an image here, or click to select</p>
+                        <input type="file" id="fileInput" accept="image/*" hidden>
+                        <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                            Choose File
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-preview">
+                        <img id="imagePreview" alt="Preview">
+                        <div class="file-details">
+                            <span id="fileName"></span>
+                            <button class="remove-btn" onclick="removeFile()">✕</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="predict-btn" id="predictBtn" onclick="predictSnake()" disabled>
+                    <span class="btn-text">🔍 Classify Snake</span>
+                    <span class="btn-loader" style="display: none;">⏳ Analyzing...</span>
+                </button>
+            </div>
+
+            <div class="result-section" id="resultSection" style="display: none;">
+                <div class="result-card" id="resultCard">
+                    <div class="result-icon" id="resultIcon"></div>
+                    <div class="result-content">
+                        <h3 id="resultTitle"></h3>
+                        <p id="resultMessage"></p>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" id="confidenceFill"></div>
+                            <span class="confidence-text" id="confidenceText"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-section" id="errorSection" style="display: none;">
+                <div class="error-card">
+                    <div class="error-icon">⚠️</div>
+                    <h3>Oops! Something went wrong</h3>
+                    <p id="errorMessage"></p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>🌿 Powered by Random Forest ML • Built for wildlife safety</p>
+        </footer>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const predictBtn = document.getElementById('predictBtn');
+        const resultSection = document.getElementById('resultSection');
+        const errorSection = document.getElementById('errorSection');
+
+        let selectedFile = null;
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Please select a valid image file.');
+                return;
+            }
+
+            selectedFile = file;
+            
+            // Show file preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('imagePreview').src = e.target.result;
+                document.getElementById('fileName').textContent = file.name;
+                uploadArea.style.display = 'none';
+                fileInfo.style.display = 'block';
+                predictBtn.disabled = false;
+                hideError();
+                hideResult();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeFile() {
+            selectedFile = null;
+            uploadArea.style.display = 'block';
+            fileInfo.style.display = 'none';
+            predictBtn.disabled = true;
+            fileInput.value = '';
+            hideResult();
+            hideError();
+        }
+
+        async function predictSnake() {
+            if (!selectedFile) return;
+
+            // Show loading state
+            predictBtn.disabled = true;
+            document.querySelector('.btn-text').style.display = 'none';
+            document.querySelector('.btn-loader').style.display = 'inline';
+            hideError();
+            hideResult();
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showResult(result);
+                } else {
+                    showError(result.error || 'An error occurred during prediction.');
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            } finally {
+                // Reset button state
+                predictBtn.disabled = false;
+                document.querySelector('.btn-text').style.display = 'inline';
+                document.querySelector('.btn-loader').style.display = 'none';
+            }
+        }
+
+        function showResult(result) {
+            const isVenomous = result.class === 'venomous';
+            const resultCard = document.getElementById('resultCard');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultMessage = document.getElementById('resultMessage');
+            const confidenceFill = document.getElementById('confidenceFill');
+            const confidenceText = document.getElementById('confidenceText');
+
+            // Set result styling based on venomous/non-venomous
+            if (isVenomous) {
+                resultCard.className = 'result-card venomous';
+                resultIcon.textContent = '☠️';
+                resultTitle.textContent = 'VENOMOUS SNAKE';
+            } else {
+                resultCard.className = 'result-card non-venomous';
+                resultIcon.textContent = '✅';
+                resultTitle.textContent = 'NON-VENOMOUS SNAKE';
+            }
+
+            resultMessage.textContent = result.message;
+            
+            // Update confidence bar
+            const confidence = result.confidence * 100;
+            confidenceFill.style.width = confidence + '%';
+            confidenceText.textContent = confidence.toFixed(1) + '%';
+
+            resultSection.style.display = 'block';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            errorSection.style.display = 'block';
+        }
+
+        function hideResult() {
+            resultSection.style.display = 'none';
+        }
+
+        function hideError() {
+            errorSection.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
